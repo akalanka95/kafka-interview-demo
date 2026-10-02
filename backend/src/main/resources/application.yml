@@ -1,0 +1,19 @@
+server.port: 8080
+
+demo:
+  kafka:
+    bootstrap-servers: localhost:19092,localhost:29092,localhost:39092
+    username: web-app
+    password: ${KAFKA_PASSWORD:web-app-secret}   # demo-only default, see infra/client-configs
+    topic: web.messages
+    expected-broker-ids: [1, 2, 3]
+
+spring:
+  application.name: kafka-demo-backend
+  mvc.async.request-timeout: -1      # SSE connections never time out on the MVC side
+
+management:
+  endpoints.web.exposure.include: health
+
+logging.level:
+  org.apache.kafka: WARN
