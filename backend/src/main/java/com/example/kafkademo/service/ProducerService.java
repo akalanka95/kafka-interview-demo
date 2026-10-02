@@ -1,6 +1,7 @@
 package com.example.kafkademo.service;
 
 import com.example.kafkademo.config.KafkaProps;
+import com.example.kafkademo.model.DeliveryMode;
 import com.example.kafkademo.model.MessageRequest;
 import com.example.kafkademo.model.SendResponse;
 import com.example.kafkademo.model.SendResponse.RecordResult;
@@ -33,28 +34,38 @@ public class ProducerService {
 
     private final KafkaProps props;
     private final ObjectMapper json;
+    private final StatsService stats;
     private final KafkaTemplate<String, String> atMostOnceTemplate;
 
     public ProducerService(KafkaProps props,
                            ObjectMapper json,
+                           StatsService stats,
                            @Qualifier("atMostOnceTemplate") KafkaTemplate<String, String> atMostOnceTemplate) {
         this.props = props;
         this.json = json;
+        this.stats = stats;
         this.atMostOnceTemplate = atMostOnceTemplate;
     }
 
     public SendResponse send(MessageRequest req) {
-        return switch (req.mode()) {
-            case AT_MOST_ONCE -> sendAsync(atMostOnceTemplate, req);
-            case AT_LEAST_ONCE, EXACTLY_ONCE -> throw new UnsupportedOperationException(
-                    req.mode() + " is not implemented yet");
-        };
+        if (req.mode() != DeliveryMode.AT_MOST_ONCE) {
+            throw new UnsupportedOperationException(req.mode() + " is not implemented yet");
+        }
+        stats.requestStarted();
+        try {
+            return sendAsync(atMostOnceTemplate, req);
+        } finally {
+            stats.requestFinished();
+        }
     }
 
     /** Pipelined async sends; awaits every future and counts acked / failed. */
     private SendResponse sendAsync(KafkaTemplate<String, String> template, MessageRequest req) {
         long start = System.nanoTime();
         List<ProducerRecord<String, String>> records = buildRecords(req);
+        // Counted before sending, so a fast consumer can't make received > sent. A record that fails
+        // client-side still counts as sent: it was attempted and never arrives, i.e. it's lost.
+        stats.sent(req.mode(), records.size());
 
         List<CompletableFuture<SendResult<String, String>>> futures = new ArrayList<>(records.size());
         for (ProducerRecord<String, String> record : records) {

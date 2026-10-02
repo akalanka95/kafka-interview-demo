@@ -15,7 +15,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class ProducerServiceTest {
 
     private final KafkaProps props = new KafkaProps("localhost:19092", "web-app", "pw", "web.messages", List.of(1, 2, 3));
-    private final ProducerService service = new ProducerService(props, new ObjectMapper(), null);
+    private final ProducerService service = new ProducerService(props, new ObjectMapper(), new StatsService(), null);
 
     @Test
     void buildsNumberedRecordsWithHeaders() {
