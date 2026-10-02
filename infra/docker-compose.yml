@@ -1,6 +1,7 @@
 # Local 3-node KRaft cluster with SASL/SCRAM + ACLs. See docs/infra.md.
 #   docker compose -f infra/docker-compose.yml up -d
 #   docker compose -f infra/docker-compose.yml down -v   # full reset (wipes data + users)
+#   docker compose -f infra/docker-compose.yml --profile app up -d --build   # + Spring Boot backend
 name: kafka-demo
 
 x-broker: &broker
@@ -85,6 +86,26 @@ services:
       KAFKA_CLUSTERS_0_PROPERTIES_SECURITY_PROTOCOL: SASL_PLAINTEXT
       KAFKA_CLUSTERS_0_PROPERTIES_SASL_MECHANISM: SCRAM-SHA-512
       KAFKA_CLUSTERS_0_PROPERTIES_SASL_JAAS_CONFIG: 'org.apache.kafka.common.security.scram.ScramLoginModule required username="admin" password="admin-secret";'
+
+  # Spring Boot API. Opt-in profile so a plain `up -d` still starts infra only and port 8080 stays
+  # free for `mvn spring-boot:run` on the host:
+  #   docker compose -f infra/docker-compose.yml --profile app up -d --build
+  backend:
+    build: ../backend
+    image: kafka-demo/backend:local
+    container_name: backend
+    profiles: ["app"]
+    ports: ["8080:8080"]
+    depends_on:
+      kafka-init: { condition: service_completed_successfully }
+    restart: unless-stopped
+    environment:
+      # Inside the docker network the CLIENT listener (localhost:N9092) points at the container
+      # itself, so use the INTERNAL listener. Env name follows Spring relaxed binding:
+      # demo.kafka.bootstrap-servers → DEMO_KAFKA_BOOTSTRAPSERVERS.
+      DEMO_KAFKA_BOOTSTRAPSERVERS: kafka-1:9092,kafka-2:9092,kafka-3:9092
+      KAFKA_PASSWORD: web-app-secret
+      JAVA_TOOL_OPTIONS: "-Xms128m -Xmx384m"
 
 volumes:
   kafka-1-data:
