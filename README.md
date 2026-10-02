@@ -13,7 +13,7 @@ Design docs: [docs/architecture.md](docs/architecture.md) → [infra](docs/infra
 | Infra (Kafka cluster, topics, ACLs) | ✅ done, smoke test passing |
 | Backend (Spring Boot) | ✅ all 3 delivery modes (DUPLICATE, ABORT), stats, SSE stream, `/api/cluster`, `run-all` |
 | Frontend (React, UI_v1) | ✅ UI_v1 built against the current backend |
-| Python pipeline | ⏳ (needs Python 3.11/3.12 installed) |
+| Python pipeline | ✅ producer, consumer (dedup), retry consumer, DLQ + inspector, 15 unit tests · [python-app/README.md](python-app/README.md) |
 
 ## Quick start: infra
 
