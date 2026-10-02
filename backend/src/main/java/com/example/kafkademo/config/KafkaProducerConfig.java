@@ -16,6 +16,8 @@ import java.util.Map;
 @Configuration
 public class KafkaProducerConfig {
 
+    static final String TRANSACTION_ID_PREFIX = "web-tx-";
+
     private final KafkaProps props;
 
     public KafkaProducerConfig(KafkaProps props) {
@@ -42,6 +44,50 @@ public class KafkaProducerConfig {
     @Bean
     public KafkaTemplate<String, String> atMostOnceTemplate(
             @Qualifier("atMostOnceProducerFactory") ProducerFactory<String, String> pf) {
+        return new KafkaTemplate<>(pf);
+    }
+
+    // --- At-least-once: acks=all + unlimited retries, duplicates possible --------------------
+
+    @Bean
+    public ProducerFactory<String, String> atLeastOnceProducerFactory() {
+        Map<String, Object> cfg = baseProducerProps();
+        cfg.put(ProducerConfig.ACKS_CONFIG, "all");
+        cfg.put(ProducerConfig.RETRIES_CONFIG, Integer.MAX_VALUE);
+        // Idempotence off on purpose: a retry after a lost ack writes the record twice, and with
+        // 5 requests in flight a retried batch can land behind a later one (reordering).
+        cfg.put(ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG, false);
+        cfg.put(ProducerConfig.MAX_IN_FLIGHT_REQUESTS_PER_CONNECTION, 5);
+        cfg.put(ProducerConfig.DELIVERY_TIMEOUT_MS_CONFIG, 120_000);
+        return new DefaultKafkaProducerFactory<>(cfg);
+    }
+
+    @Bean
+    public KafkaTemplate<String, String> atLeastOnceTemplate(
+            @Qualifier("atLeastOnceProducerFactory") ProducerFactory<String, String> pf) {
+        return new KafkaTemplate<>(pf);
+    }
+
+    // --- Exactly-once: idempotent + transactional --------------------------------------------
+
+    @Bean
+    public ProducerFactory<String, String> exactlyOnceProducerFactory() {
+        Map<String, Object> cfg = baseProducerProps();
+        cfg.put(ProducerConfig.ACKS_CONFIG, "all");
+        cfg.put(ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG, true);
+        // initTransactions() is bounded by max.block.ms. The very first transactional producer on a
+        // fresh cluster makes the brokers create __transaction_state (50 partitions, RF 3), which
+        // took > 10 s here. See TransactionWarmup.
+        cfg.put(ProducerConfig.MAX_BLOCK_MS_CONFIG, 30_000);
+        DefaultKafkaProducerFactory<String, String> pf = new DefaultKafkaProducerFactory<>(cfg);
+        // transactional.id = web-tx-<n>; the web-app user holds a prefixed ACL on "web-tx-".
+        pf.setTransactionIdPrefix(TRANSACTION_ID_PREFIX);
+        return pf;
+    }
+
+    @Bean
+    public KafkaTemplate<String, String> exactlyOnceTemplate(
+            @Qualifier("exactlyOnceProducerFactory") ProducerFactory<String, String> pf) {
         return new KafkaTemplate<>(pf);
     }
 

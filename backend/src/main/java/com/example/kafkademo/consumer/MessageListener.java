@@ -3,6 +3,7 @@ package com.example.kafkademo.consumer;
 import com.example.kafkademo.model.DeliveryMode;
 import com.example.kafkademo.model.MessageEvent;
 import com.example.kafkademo.model.View;
+import com.example.kafkademo.service.AbortedRegistry;
 import com.example.kafkademo.service.DuplicateTracker;
 import com.example.kafkademo.service.StatsService;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -32,6 +33,7 @@ public class MessageListener implements ConsumerSeekAware {
     private static final Logger log = LoggerFactory.getLogger(MessageListener.class);
 
     private final DuplicateTracker duplicates;
+    private final AbortedRegistry abortedRegistry;
     private final StatsService stats;
     private final SseBroadcaster broadcaster;
     private final ObjectMapper json;
@@ -39,8 +41,10 @@ public class MessageListener implements ConsumerSeekAware {
     /** Per consumer thread: has this thread already been positioned at the end of its partitions? */
     private final ThreadLocal<Boolean> positioned = ThreadLocal.withInitial(() -> false);
 
-    public MessageListener(DuplicateTracker duplicates, StatsService stats, SseBroadcaster broadcaster, ObjectMapper json) {
+    public MessageListener(DuplicateTracker duplicates, AbortedRegistry abortedRegistry, StatsService stats,
+                           SseBroadcaster broadcaster, ObjectMapper json) {
         this.duplicates = duplicates;
+        this.abortedRegistry = abortedRegistry;
         this.stats = stats;
         this.broadcaster = broadcaster;
         this.json = json;
@@ -88,10 +92,11 @@ public class MessageListener implements ConsumerSeekAware {
             else stats.received(mode);
         }
 
-        // aborted stays false until the EXACTLY_ONCE mode adds the aborted-id registry.
+        // Only read_uncommitted ever sees a record of an aborted transaction.
+        boolean aborted = view == View.UNCOMMITTED && abortedRegistry.contains(messageId);
         broadcaster.enqueue(new MessageEvent(view, messageId, text(record.value()), record.key(), mode,
                 record.topic(), record.partition(), record.offset(), record.timestamp(),
-                duplicate, false, null, null, false));
+                duplicate, aborted, null, null, false));
     }
 
     private String text(String value) {

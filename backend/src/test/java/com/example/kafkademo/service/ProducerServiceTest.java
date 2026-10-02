@@ -15,7 +15,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class ProducerServiceTest {
 
     private final KafkaProps props = new KafkaProps("localhost:19092", "web-app", "pw", "web.messages", List.of(1, 2, 3));
-    private final ProducerService service = new ProducerService(props, new ObjectMapper(), new StatsService(), null);
+    private final ProducerService service = new ProducerService(props, new ObjectMapper(), new StatsService(), new AbortedRegistry(), null, null, null);
 
     @Test
     void buildsNumberedRecordsWithHeaders() {
@@ -39,6 +39,19 @@ class ProducerServiceTest {
         var records = service.buildRecords(new MessageRequest("hi", null, DeliveryMode.AT_MOST_ONCE, 1, null));
         assertThat(records.get(0).value()).isEqualTo("{\"text\":\"hi\"}");
         assertThat(records.get(0).key()).isNull();
+    }
+
+    @Test
+    void duplicateIndicesPickTwoPercentOfAckedRecordsSpreadEvenly() {
+        int[] partitions = new int[500];
+        assertThat(ProducerService.duplicateIndices(partitions)).containsExactly(0, 50, 100, 150, 200, 250, 300, 350, 400, 450);
+    }
+
+    @Test
+    void duplicateIndicesPickAtLeastOneAndSkipFailedRecords() {
+        assertThat(ProducerService.duplicateIndices(new int[] {-1, 2, -1})).containsExactly(1);
+        assertThat(ProducerService.duplicateIndices(new int[] {-1, -1})).isEmpty();
+        assertThat(ProducerService.duplicateIndices(new int[0])).isEmpty();
     }
 
     private static String header(ProducerRecord<?, ?> r, String name) {
