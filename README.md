@@ -11,8 +11,8 @@ Design docs: [docs/architecture.md](docs/architecture.md) → [infra](docs/infra
 | Layer | State |
 |---|---|
 | Infra (Kafka cluster, topics, ACLs) | ✅ done, smoke test passing |
-| Backend (Spring Boot) | 🟡 at-most-once, stats and SSE stream; at-least-once, exactly-once, `/api/cluster` and `run-all` pending |
-| Frontend (React, UI_v1) | ✅ UI_v1 built against the current backend; broker chips show `unknown` until `/api/cluster` exists |
+| Backend (Spring Boot) | ✅ all 3 delivery modes (DUPLICATE, ABORT), stats, SSE stream, `/api/cluster`, `run-all` |
+| Frontend (React, UI_v1) | ✅ UI_v1 built against the current backend |
 | Python pipeline | ⏳ (needs Python 3.11/3.12 installed) |
 
 ## Quick start: infra

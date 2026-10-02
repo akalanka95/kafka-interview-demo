@@ -3,6 +3,7 @@ package com.example.kafkademo.api;
 import com.example.kafkademo.consumer.ListenerReadiness;
 import com.example.kafkademo.consumer.SseBroadcaster;
 import com.example.kafkademo.model.StatsSnapshot;
+import com.example.kafkademo.service.AbortedRegistry;
 import com.example.kafkademo.service.DuplicateTracker;
 import com.example.kafkademo.service.StatsService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -20,13 +21,15 @@ public class StatsController {
 
     private final StatsService stats;
     private final DuplicateTracker duplicates;
+    private final AbortedRegistry abortedRegistry;
     private final SseBroadcaster broadcaster;
     private final ListenerReadiness readiness;
 
-    public StatsController(StatsService stats, DuplicateTracker duplicates,
+    public StatsController(StatsService stats, DuplicateTracker duplicates, AbortedRegistry abortedRegistry,
                            SseBroadcaster broadcaster, ListenerReadiness readiness) {
         this.stats = stats;
         this.duplicates = duplicates;
+        this.abortedRegistry = abortedRegistry;
         this.broadcaster = broadcaster;
         this.readiness = readiness;
     }
@@ -39,11 +42,12 @@ public class StatsController {
         return new StatsSnapshot(stats.modes(), stats.inFlight(), broadcaster.droppedForUi(), readiness.ready());
     }
 
-    @Operation(summary = "Reset all counters and duplicate trackers")
+    @Operation(summary = "Reset all counters, duplicate trackers and the aborted registry")
     @DeleteMapping
     public ResponseEntity<Void> reset() {
         stats.reset();
         duplicates.reset();
+        abortedRegistry.reset();
         broadcaster.resetDropped();
         return ResponseEntity.noContent().build();
     }

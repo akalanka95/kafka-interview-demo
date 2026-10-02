@@ -3,6 +3,7 @@ package com.example.kafkademo.consumer;
 import com.example.kafkademo.model.DeliveryMode;
 import com.example.kafkademo.model.MessageEvent;
 import com.example.kafkademo.model.View;
+import com.example.kafkademo.service.AbortedRegistry;
 import com.example.kafkademo.service.DuplicateTracker;
 import com.example.kafkademo.service.StatsService;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -19,8 +20,9 @@ class MessageListenerTest {
 
     private final StatsService stats = new StatsService();
     private final SseBroadcaster broadcaster = new SseBroadcaster();
+    private final AbortedRegistry aborted = new AbortedRegistry();
     private final MessageListener listener =
-            new MessageListener(new DuplicateTracker(), stats, broadcaster, new ObjectMapper());
+            new MessageListener(new DuplicateTracker(), aborted, stats, broadcaster, new ObjectMapper());
 
     @BeforeEach
     void subscribe() {
@@ -45,6 +47,19 @@ class MessageListenerTest {
                         org.assertj.core.groups.Tuple.tuple(View.COMMITTED, 11L, true));
         assertThat(events.get(0).text()).isEqualTo("Order #1");
         assertThat(events.get(0).key()).isEqualTo("ORD-1");
+    }
+
+    @Test
+    void tagsAbortedRecordsInUncommittedViewOnly() {
+        aborted.registerAll(List.of("m9"));
+        listener.handle(View.UNCOMMITTED, record(20, "m9"));
+        listener.handle(View.UNCOMMITTED, record(21, "m10"));
+
+        assertThat(broadcaster.drainBatch()).extracting(MessageEvent::messageId, MessageEvent::aborted)
+                .containsExactly(
+                        org.assertj.core.groups.Tuple.tuple("m9", true),
+                        org.assertj.core.groups.Tuple.tuple("m10", false));
+        assertThat(stats.modes().get(DeliveryMode.AT_MOST_ONCE).received()).isZero();
     }
 
     @Test
