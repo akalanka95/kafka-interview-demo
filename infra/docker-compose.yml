@@ -1,0 +1,113 @@
+# Local 3-node KRaft cluster with SASL/SCRAM + ACLs. See docs/infra.md.
+#   docker compose -f infra/docker-compose.yml up -d
+#   docker compose -f infra/docker-compose.yml down -v   # full reset (wipes data + users)
+#   docker compose -f infra/docker-compose.yml --profile app up -d --build   # + Spring Boot backend
+name: kafka-demo
+
+x-broker: &broker
+  image: apache/kafka:3.9.1
+  entrypoint: ["/bin/bash", "/mnt/broker/start.sh"]
+  env_file: .env
+  restart: unless-stopped
+  healthcheck:
+    test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 --command-config /mnt/client-configs/admin.properties > /dev/null 2>&1"]
+    interval: 10s
+    timeout: 15s
+    retries: 15
+    start_period: 30s
+
+services:
+  kafka-1:
+    <<: *broker
+    container_name: kafka-1
+    hostname: kafka-1
+    environment:
+      NODE_ID: "1"
+      KAFKA_HEAP_OPTS: "-Xms512m -Xmx512m"
+    ports: ["19092:19092"]
+    volumes:
+      - ./broker:/mnt/broker:ro
+      - ./client-configs:/mnt/client-configs:ro
+      - kafka-1-data:/var/lib/kafka/data
+
+  kafka-2:
+    <<: *broker
+    container_name: kafka-2
+    hostname: kafka-2
+    environment:
+      NODE_ID: "2"
+      KAFKA_HEAP_OPTS: "-Xms512m -Xmx512m"
+    ports: ["29092:29092"]
+    volumes:
+      - ./broker:/mnt/broker:ro
+      - ./client-configs:/mnt/client-configs:ro
+      - kafka-2-data:/var/lib/kafka/data
+
+  kafka-3:
+    <<: *broker
+    container_name: kafka-3
+    hostname: kafka-3
+    environment:
+      NODE_ID: "3"
+      KAFKA_HEAP_OPTS: "-Xms512m -Xmx512m"
+    ports: ["39092:39092"]
+    volumes:
+      - ./broker:/mnt/broker:ro
+      - ./client-configs:/mnt/client-configs:ro
+      - kafka-3-data:/var/lib/kafka/data
+
+  kafka-init:
+    image: apache/kafka:3.9.1
+    container_name: kafka-init
+    entrypoint: ["/bin/bash", "/mnt/init.sh"]
+    environment:
+      KAFKA_HEAP_OPTS: "-Xms128m -Xmx256m"
+    depends_on:
+      kafka-1: { condition: service_healthy }
+      kafka-2: { condition: service_healthy }
+      kafka-3: { condition: service_healthy }
+    volumes:
+      - ./init.sh:/mnt/init.sh:ro
+      - ./client-configs:/mnt/client-configs:ro
+    restart: "no"
+
+  kafka-ui:
+    image: ghcr.io/kafbat/kafka-ui:v1.3.0
+    container_name: kafka-ui
+    ports: ["8081:8080"]
+    depends_on:
+      kafka-init: { condition: service_completed_successfully }
+    restart: unless-stopped
+    environment:
+      JAVA_OPTS: "-Xms128m -Xmx384m"
+      DYNAMIC_CONFIG_ENABLED: "false"
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka-1:9092,kafka-2:9092,kafka-3:9092
+      KAFKA_CLUSTERS_0_PROPERTIES_SECURITY_PROTOCOL: SASL_PLAINTEXT
+      KAFKA_CLUSTERS_0_PROPERTIES_SASL_MECHANISM: SCRAM-SHA-512
+      KAFKA_CLUSTERS_0_PROPERTIES_SASL_JAAS_CONFIG: 'org.apache.kafka.common.security.scram.ScramLoginModule required username="admin" password="admin-secret";'
+
+  # Spring Boot API. Opt-in profile so a plain `up -d` still starts infra only and port 8080 stays
+  # free for `mvn spring-boot:run` on the host:
+  #   docker compose -f infra/docker-compose.yml --profile app up -d --build
+  backend:
+    build: ../backend
+    image: kafka-demo/backend:local
+    container_name: backend
+    profiles: ["app"]
+    ports: ["8080:8080"]
+    depends_on:
+      kafka-init: { condition: service_completed_successfully }
+    restart: unless-stopped
+    environment:
+      # Inside the docker network the CLIENT listener (localhost:N9092) points at the container
+      # itself, so use the INTERNAL listener. Env name follows Spring relaxed binding:
+      # demo.kafka.bootstrap-servers → DEMO_KAFKA_BOOTSTRAPSERVERS.
+      DEMO_KAFKA_BOOTSTRAPSERVERS: kafka-1:9092,kafka-2:9092,kafka-3:9092
+      KAFKA_PASSWORD: web-app-secret
+      JAVA_TOOL_OPTIONS: "-Xms128m -Xmx384m"
+
+volumes:
+  kafka-1-data:
+  kafka-2-data:
+  kafka-3-data:
