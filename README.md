@@ -11,8 +11,8 @@ Design docs: [docs/architecture.md](docs/architecture.md) → [infra](docs/infra
 | Layer | State |
 |---|---|
 | Infra (Kafka cluster, topics, ACLs) | ✅ done, smoke test passing |
-| Backend (Spring Boot) | ⏳ next |
-| Frontend (React, UI_v1) | ⏳ |
+| Backend (Spring Boot) | 🟡 at-most-once, stats and SSE stream; at-least-once, exactly-once, `/api/cluster` and `run-all` pending |
+| Frontend (React, UI_v1) | ✅ UI_v1 built against the current backend; broker chips show `unknown` until `/api/cluster` exists |
 | Python pipeline | ⏳ (needs Python 3.11/3.12 installed) |
 
 ## Quick start: infra
@@ -33,6 +33,28 @@ powershell -ExecutionPolicy Bypass -File .\smoke-test.ps1
 Full reset (wipes data and users): `docker compose -f infra/docker-compose.yml down -v`
 
 More commands: [docs/infra.md §11](docs/infra.md#11-operations-cheatsheet-powershell-from-repo-root).
+
+## Quick start: web app
+
+Backend on :8080, either in Docker or on the host:
+
+```powershell
+docker compose -f infra/docker-compose.yml --profile app up -d --build backend
+# or: cd backend; mvn spring-boot:run
+```
+
+Frontend (Node 20+):
+
+```powershell
+cd frontend
+npm install
+npm run dev        # http://localhost:5173, proxies /api to :8080
+```
+
+| What | Where |
+|---|---|
+| Delivery lab UI | http://localhost:5173 |
+| Swagger UI | http://localhost:8080/swagger-ui.html |
 
 ## Branching
 
