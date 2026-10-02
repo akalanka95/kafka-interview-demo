@@ -1,0 +1,23 @@
+docs/
+
+# Java
+backend/target/
+*.class
+.idea/
+*.iml
+
+# Node
+node_modules/
+frontend/dist/
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+python-app/data/
+python-app/.fail_downstream
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
