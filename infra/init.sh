@@ -1,6 +1,7 @@
 #!/bin/bash
-# One-shot cluster bootstrap: SCRAM users, topics, ACLs. Idempotent — safe to re-run:
-#   docker compose run --rm kafka-init
+# One-shot cluster bootstrap: SCRAM users, topics, ACLs. Idempotent; skips itself once the
+# cluster is initialized. To re-apply after editing this file:
+#   docker compose run --rm -e FORCE_INIT=1 kafka-init
 # See docs/infra.md §6–7.
 set -euo pipefail
 
@@ -9,6 +10,19 @@ CFG=/mnt/client-configs/admin.properties
 BIN=/opt/kafka/bin
 
 log() { echo "[init] $*"; }
+
+# ---------------------------------------------------------------------------
+# 0) Fast path. Compose re-runs this container on every `up` (backend waits on
+#    service_completed_successfully), and each CLI call below is a JVM start that takes
+#    5-20 s on a busy laptop — ~27 of them kept the backend in "Created" for minutes.
+#    The last ACL is written only after every earlier step succeeded (set -e), so its
+#    presence means a previous run completed. FORCE_INIT=1 re-applies everything.
+# ---------------------------------------------------------------------------
+if [[ "${FORCE_INIT:-0}" != "1" ]] && $BIN/kafka-acls.sh --bootstrap-server "$BS" --command-config "$CFG" \
+     --list --group dlq-inspector 2>/dev/null | grep -q 'principal=User:py-ops'; then
+  log "already initialized, skipping (set FORCE_INIT=1 to re-apply)"
+  exit 0
+fi
 
 # ---------------------------------------------------------------------------
 # 1) SCRAM users (upsert). admin already exists from `kafka-storage format`.
